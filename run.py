@@ -203,7 +203,7 @@ def report(stamp_dir: Path) -> str:
     lines += ["", f"Guard vs detector, runs where the guard only watched: caught {tp}, missed {fn}, "
                   f"flagged a clean run {fp}."]
     cost = sum(r["cost_usd"] or 0 for r in rows)
-    lines.append(f"{len(rows)} runs, list-price cost ${cost:.2f}.")
+    lines.append(f"{len(rows)} runs. Tokens used, priced at API list rates: ${cost:.2f} (a size measure; a subscription login is not billed per token).")
     text = "\n".join(lines) + "\n"
     (stamp_dir / "results.md").write_text(text)
     return text
