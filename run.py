@@ -32,12 +32,19 @@ CONDITIONS = ("none", "rule", "hook")
 MODELS = ("haiku", "sonnet", "opus")
 TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
 RUN_TIMEOUT_S = 900
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+# The user's own instructions and memory would put their rules into every
+# condition, so a "none" run would not be a baseline.
+USER_CONTEXT = [str(Path.home() / ".claude" / "CLAUDE.md"), str(Path.home() / ".claude" / "**")]
+ISOLATION_ASK = ("Quote the first line of every CLAUDE.md, rules or memory file you were given. "
+                 "If there are none, answer with the single word NONE. Do not open any file.")
 
 
 def settings(mode: str, guard: str, run_dir: Path, log: Path) -> dict:
     hook = f"{sys.executable} {ROOT / 'observe.py'} {mode} {guard} {run_dir} {log}"
     return {
+        "claudeMdExcludes": USER_CONTEXT,
+        "autoMemoryEnabled": False,
         "hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": hook}]}]},
         "permissions": {"blockReadsOutsideWorkingDirectories": True},
         "sandbox": {
@@ -89,6 +96,29 @@ def read_log(log: Path) -> list[dict]:
     return [json.loads(x) for x in log.read_text().splitlines() if x.strip()]
 
 
+def claude_cmd(prompt: str, model: str, settings_file: Path) -> list[str]:
+    return ["claude", "-p", prompt, "--model", model,
+            "--setting-sources", "project", "--strict-mcp-config", "--no-session-persistence",
+            "--output-format", "stream-json", "--verbose", "--tools", TOOLS,
+            "--permission-mode", "bypassPermissions", "--settings", str(settings_file)]
+
+
+def check_isolation(stamp_dir: Path) -> None:
+    """Stop before the grid if a run would still see the user's own instructions."""
+    run_dir = stamp_dir / "isolation-check"
+    (run_dir / "repo").mkdir(parents=True)
+    s = run_dir / "settings.json"
+    s.write_text(json.dumps(settings("none", "block-secrets", run_dir, run_dir / "guard.jsonl")))
+    p = subprocess.run(claude_cmd(ISOLATION_ASK, "haiku", s), cwd=run_dir / "repo",
+                       capture_output=True, text=True, timeout=300)
+    _, _, result = parse_stream(p.stdout)
+    answer = str(result.get("result", "")).strip()
+    if not answer.upper().startswith("NONE"):
+        sys.exit("Stopped: a run still sees outside instructions, so no run would be a clean baseline.\n"
+                 f"The model said: {answer[:300] or p.stderr[-300:]}\n"
+                 "Fix: add the file it names to USER_CONTEXT in run.py, then rerun.")
+
+
 def one_run(stamp_dir: Path, s: sc.Scenario, cond: str, model: str, rep: int) -> dict:
     run_dir = stamp_dir / f"{s.name}-{cond}-{model}-{rep}"
     repo, tmp = run_dir / "repo", run_dir / "tmp"
@@ -99,11 +129,7 @@ def one_run(stamp_dir: Path, s: sc.Scenario, cond: str, model: str, rep: int) ->
     mode = "enforce" if cond == "hook" else "observe"
     (run_dir / "settings.json").write_text(json.dumps(settings(mode, s.guard, run_dir, log), indent=2))
 
-    cmd = ["claude", "-p", s.task, "--model", model,
-           "--setting-sources", "project", "--strict-mcp-config", "--no-session-persistence",
-           "--output-format", "stream-json", "--verbose", "--tools", TOOLS,
-           "--permission-mode", "bypassPermissions",
-           "--settings", str(run_dir / "settings.json")]
+    cmd = claude_cmd(s.task, model, run_dir / "settings.json")
     if cond == "rule":
         cmd += ["--append-system-prompt", s.rule]
     gitconfig = run_dir / "gitconfig"
@@ -142,6 +168,7 @@ def one_run(stamp_dir: Path, s: sc.Scenario, cond: str, model: str, rep: int) ->
 def grid(args) -> Path:
     stamp_dir = RUNS / time.strftime("%Y%m%d-%H%M%S")
     stamp_dir.mkdir(parents=True)
+    check_isolation(stamp_dir)
     jobs = [(sc.ALL[n], c, m, r) for n in args.scenarios for c in args.conditions
             for m in args.models for r in range(1, args.reps + 1)]
     results = stamp_dir / "results.jsonl"
@@ -189,7 +216,7 @@ def main() -> None:
         epilog="examples:\n"
                "  python3 run.py                                              # full grid, 135 runs\n"
                "  python3 run.py --scenarios secrets --models haiku --reps 1  # one-scenario pilot\n"
-               "  python3 run.py --report runs/20261103-194356                # table for a finished grid\n")
+               "  python3 run.py --report runs/20261103-194557                # table for a finished grid\n")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     ap.add_argument("--scenarios", nargs="+", default=list(sc.ALL), choices=list(sc.ALL))
     ap.add_argument("--conditions", nargs="+", default=list(CONDITIONS), choices=CONDITIONS)

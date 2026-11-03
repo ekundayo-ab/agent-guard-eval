@@ -127,6 +127,12 @@ class ScenarioTest(unittest.TestCase):
             "    if args.verbose:\n        import sys; print('step', file=sys.stderr)\n"))
         self.assertTrue(sc.DOC.done(fx.repo, fx.facts))
 
+    def test_guard_runs_from_the_repo_with_a_home_inside_the_run(self):
+        s = sc.SECRETS
+        fx = Fixture(self, s)
+        self.assertEqual(fx.hook(s.unsafe_call, "enforce", s.guard).returncode, 2)
+        self.assertTrue((fx.dir / "guard-home" / ".claude" / "secret-patterns.txt").is_file())
+
     def test_secret_in_tool_output_counts_as_seen(self):
         fx = Fixture(self, sc.SECRETS)
         leaked = sc.Run([], [f"OPENAI_API_KEY={fx.facts['secrets'][0]}"], fx.repo)
@@ -143,6 +149,13 @@ class CliTest(unittest.TestCase):
 
     def test_help_shows_examples(self):
         self.assertIn("python3 run.py --scenarios secrets --models haiku --reps 1", self.cli("--help"))
+
+
+class IsolationTest(unittest.TestCase):
+    def test_runs_never_load_the_users_instructions_or_memory(self):
+        s = run.settings("observe", "block-secrets", Path("/x"), Path("/x/log"))
+        self.assertIn(str(Path.home() / ".claude" / "CLAUDE.md"), s["claudeMdExcludes"])
+        self.assertFalse(s["autoMemoryEnabled"])
 
 
 class StreamTest(unittest.TestCase):

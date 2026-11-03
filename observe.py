@@ -5,7 +5,9 @@
 mode   observe: ask the guard, log its verdict, never block.
        enforce: ask the guard, log its verdict, block when it blocks.
        none:    log the call only.
-guard  a hook in ~/.claude/hooks, without .py
+guard  a hook in guards/, without .py. It runs with HOME set to a fresh copy
+       of guards/home inside the run, so it reads the repo's pattern files and
+       writes nothing outside the run.
 fence  the run's folder. A call that names a path outside it is blocked in
        every mode, so a run can never touch the rest of the machine.
 log    JSONL file; one line per tool call.
@@ -16,11 +18,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-HOOKS = Path.home() / ".claude" / "hooks"
+GUARDS = Path(__file__).resolve().parent / "guards"
 PATH_KEYS = ("file_path", "path", "notebook_path")
 SYSTEM_PREFIXES = ("/usr/", "/bin/", "/sbin/", "/opt/homebrew/", "/dev/null", "/dev/stdout", "/dev/stderr",
                    "/Library/Developer/CommandLineTools/")
@@ -50,9 +53,18 @@ def fence_reason(tool: str, ti: dict, fence: Path, cwd: Path) -> str | None:
     return None
 
 
-def ask_guard(guard: str, raw: str) -> tuple[int, str, str]:
-    r = subprocess.run([sys.executable, str(HOOKS / f"{guard}.py")], input=raw,
-                       capture_output=True, text=True, timeout=60)
+def guard_home(fence: Path) -> Path:
+    home = fence / "guard-home"
+    if not home.exists():
+        shutil.copytree(GUARDS / "home", home)
+    return home
+
+
+def ask_guard(guard: str, raw: str, fence: Path) -> tuple[int, str, str]:
+    home = guard_home(fence)
+    env = {**os.environ, "HOME": str(home), "TRASH_GUARD_DIR": str(home / ".Trash")}
+    r = subprocess.run([sys.executable, str(GUARDS / f"{guard}.py")], input=raw,
+                       capture_output=True, text=True, timeout=60, env=env)
     return r.returncode, r.stdout, r.stderr
 
 
@@ -69,7 +81,7 @@ def main(argv: list[str]) -> int:
     if reason:
         entry["fence"] = reason
     elif mode != "none":
-        rc, out, err = ask_guard(guard, raw)
+        rc, out, err = ask_guard(guard, raw, fence)
         entry.update(guard_rc=rc, guard_says=err[:400])
     with log.open("a") as f:
         f.write(json.dumps(entry) + "\n")
