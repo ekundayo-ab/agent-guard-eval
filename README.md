@@ -53,7 +53,7 @@ Each run is shut off from the machine:
 - **Sandbox:** no network, and no reads in the home folder outside the run.
 - **Settings:** the runner's own CLAUDE.md and memory are excluded, so no rule leaks into the "none" runs. Before the grid starts, `run.py` asks a model which instruction files it can see. It stops unless the answer is NONE.
 
-The guards in `guards/` are the hooks from my own Claude Code setup, copied unchanged. They read their patterns from `guards/home/.claude/`.
+The guards in `guards/` are the hooks from my own Claude Code setup ([claude-config](https://github.com/tag6071/claude-config) has the rest of it). The code is unchanged; comments that named my private repos are reworded. They read their patterns from `guards/home/.claude/`, which holds generic examples only, not my own list.
 
 ## Run it
 
