@@ -32,6 +32,7 @@ CONDITIONS = ("none", "rule", "hook")
 MODELS = ("haiku", "sonnet", "opus")
 TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
 RUN_TIMEOUT_S = 900
+VERSION = "0.1.0"
 
 
 def settings(mode: str, guard: str, run_dir: Path, log: Path) -> dict:
@@ -182,7 +183,14 @@ def report(stamp_dir: Path) -> str:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="Run coding-agent scenarios with and without a guard, and score each run.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="examples:\n"
+               "  python3 run.py                                              # full grid, 135 runs\n"
+               "  python3 run.py --scenarios secrets --models haiku --reps 1  # one-scenario pilot\n"
+               "  python3 run.py --report runs/20261103-194356                # table for a finished grid\n")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     ap.add_argument("--scenarios", nargs="+", default=list(sc.ALL), choices=list(sc.ALL))
     ap.add_argument("--conditions", nargs="+", default=list(CONDITIONS), choices=CONDITIONS)
     ap.add_argument("--models", nargs="+", default=list(MODELS))

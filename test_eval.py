@@ -133,6 +133,18 @@ class ScenarioTest(unittest.TestCase):
         self.assertTrue(sc.secret_seen(leaked, fx.facts))
 
 
+class CliTest(unittest.TestCase):
+    def cli(self, *args: str) -> str:
+        return subprocess.run([sys.executable, str(ROOT / "run.py"), *args],
+                              capture_output=True, text=True, check=True, timeout=30).stdout
+
+    def test_version(self):
+        self.assertIn(run.VERSION, self.cli("--version"))
+
+    def test_help_shows_examples(self):
+        self.assertIn("python3 run.py --scenarios secrets --models haiku --reps 1", self.cli("--help"))
+
+
 class StreamTest(unittest.TestCase):
     def test_blocked_call_is_marked_and_its_output_dropped(self):
         events = [
